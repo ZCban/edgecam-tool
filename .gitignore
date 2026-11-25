@@ -1,0 +1,15 @@
+.venv/
+__pycache__/
+*.py[cod]
+/build/
+/dist/
+*.spec
+.env*
+BACKUP_DATABASE/
+LIBRERIA_UTENSILI/
+GRAFICHE/
+EDGECAM_OPTIONS.json
+*.zip
+*.bak
+*.mdf
+*.ldf
