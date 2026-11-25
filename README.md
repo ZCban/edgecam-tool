@@ -1,14 +1,14 @@
 # EDGECAM Tool
 
-Utilità Windows per importare ed esportare gli utensili di tornitura, fresatura e foratura tra librerie JSON e database EDGECAM. `edgecam_gui_v41.py` è l'unica GUI del progetto.
+A Windows utility for importing and exporting turning, milling, and holemaking tools between JSON libraries and EDGECAM databases. `edgecam_gui_v41.py` is the entry point for both operations.
 
-## Avvio
+## Getting started
 
-Estrai l'intero archivio portatile in una cartella scrivibile e avvia `EDGECAM-Tool.exe`. Copia `LIBRERIA_UTENSILI` e `GRAFICHE` dalla tua installazione accanto all'eseguibile. Puoi copiare anche `EDGECAM_OPTIONS.json` e `BACKUP_DATABASE` per riutilizzare impostazioni e backup esistenti. L'archivio contiene il programma e le sue dipendenze Python. Per collegarsi al database serve SQL Server Native Client 11.0 e l'accesso all'istanza EDGECAM tramite autenticazione Windows.
+Extract the entire portable archive to a writable folder and run `EDGECAM-Tool.exe`. Copy `LIBRERIA_UTENSILI` and `GRAFICHE` from your existing installation into the same folder as the executable. You can also copy `EDGECAM_OPTIONS.json` and `BACKUP_DATABASE` to reuse your settings and backups. The archive includes the application and its Python dependencies. Database access requires SQL Server Native Client 11.0 and permission to connect to the EDGECAM instance using Windows Authentication.
 
-## Sviluppo
+## Development
 
-Da PowerShell con Python 3.14 su Windows:
+Run the following commands in PowerShell with Python 3.14 on Windows.
 
 ```powershell
 python -m venv .venv
@@ -17,10 +17,10 @@ python -m venv .venv
 .\.venv\Scripts\python.exe -m PyInstaller --clean --noconfirm --windowed --name EDGECAM-Tool edgecam_gui_v41.py
 ```
 
-La compilazione genera la cartella portatile `dist/EDGECAM-Tool`. GitHub Actions la genera, la verifica e la pubblica in formato ZIP quando viene caricato un tag di versione.
+The build creates the portable application in `dist/EDGECAM-Tool`. When a version tag is pushed, GitHub Actions builds and verifies the package and publishes it as a ZIP archive.
 
-## Esportazione utensili
+## Exporting tools
 
-Nella finestra principale, apri **Esporta utensili**, scegli il **Database sorgente** e spunta le famiglie da esportare. Premi **Avvia esportazione** e conferma. Il programma legge gli utensili e i montaggi dal database e salva i JSON in `LIBRERIA_UTENSILI`, la stessa cartella usata dall'importazione. I duplicati per nome vengono saltati. Avanzamento, esito e nuovi utensili vengono mostrati nella finestra principale.
+In the main window, open **Export tools**, select the **Source database**, and tick the tool families you want to export. Click **Start export** and confirm. The application reads tools and their mounting records from the database and saves the JSON files to `LIBRERIA_UTENSILI`, the same folder used for imports. It skips tools whose names already exist in the library. The main window shows progress, the result, and the newly exported tools.
 
-Se hai già esportato utensili con la versione separata, i relativi JSON si trovano in `esportatori/LIBRERIA_UTENSILI`. Puoi copiarli nelle corrispondenti sottocartelle di `LIBRERIA_UTENSILI` evitando di sovrascrivere file esistenti.
+If you previously exported tools with the standalone exporter, you can find the JSON files in `esportatori/LIBRERIA_UTENSILI`. Copy them to the corresponding subfolders in `LIBRERIA_UTENSILI`, skipping any files that already exist.

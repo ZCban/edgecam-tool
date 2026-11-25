@@ -41,6 +41,8 @@ Crea e mantieni aggiornati i seguenti file:
 - CHANGELOG.md
 - .gitignore
 
+Scrivi e aggiorna `README.md` esclusivamente in inglese.
+
 ## 4. Sviluppo e modifiche
 
 Ogni volta che l'utente richiede una modifica:
