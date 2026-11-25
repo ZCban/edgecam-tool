@@ -10,7 +10,7 @@ from decimal import Decimal
 import pyodbc
 import sys
 
-VERSION = '1.0.0'
+VERSION = '1.0.1'
 APP_DIR = Path(sys.executable if getattr(sys, 'frozen', False) else __file__).resolve().parent
 
 # Disable ODBC pooling before opening any connection.

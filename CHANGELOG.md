@@ -1,3 +1,18 @@
+# Versione v1.0.1
+
+## 📅 Data di pubblicazione
+
+25 novembre 2026
+
+## ⚙️ Modifiche tecniche
+
+- `esportatori/edgecam_esporta_utensili_v2.py` è l'unico esportatore incluso nei sorgenti della versione corrente.
+- Rimossi i quattro script di esportazione obsoleti dalla cartella di lavoro e dal ramo `main`. Le copie precedenti restano nella cronologia Git.
+
+## 📦 Download
+
+- `EDGECAM-Tool-v1.0.1-windows-x64.zip` contiene la GUI di importazione portatile. L'esportatore V2 è disponibile nell'archivio dei sorgenti della release.
+
 # Versione v1.0.0
 
 ## 📅 Data di pubblicazione

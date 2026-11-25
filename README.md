@@ -1,6 +1,6 @@
 # EDGECAM Tool
 
-Utilità Windows per importare gli utensili di tornitura, fresatura e foratura da librerie JSON nel database EDGECAM. La prima release `v1.0.0` deriva dalla GUI V41. Le versioni precedenti e gli esportatori sono conservati nel repository.
+Utilità Windows per importare gli utensili di tornitura, fresatura e foratura da librerie JSON nel database EDGECAM. La GUI V41 è distribuita a partire dalla release `v1.0.0`. Le versioni precedenti della GUI sono conservate nel repository.
 
 ## Avvio
 
@@ -18,3 +18,7 @@ python -m venv .venv
 ```
 
 La compilazione genera la cartella portatile `dist/EDGECAM-Tool`. GitHub Actions la genera, la verifica e la pubblica in formato ZIP quando viene caricato un tag di versione.
+
+## Esportazione utensili
+
+L'esportatore del progetto è [`edgecam_esporta_utensili_v2.py`](esportatori/edgecam_esporta_utensili_v2.py). Per avviarlo dalla cartella del repository, usa `.\.venv\Scripts\python.exe .\esportatori\edgecam_esporta_utensili_v2.py`. Lo script esporta i file JSON in `esportatori/LIBRERIA_UTENSILI`.
