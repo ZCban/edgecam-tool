@@ -1,3 +1,22 @@
+# Versione v1.1.0
+
+## 📅 Data di pubblicazione
+
+25 novembre 2026
+
+## ✨ Nuove funzionalità
+
+- Esportazione V2 integrata nella finestra principale. Il pannello **Esporta utensili** consente di scegliere un ToolStore sorgente e le famiglie di tornitura, fresatura e foratura.
+- I JSON esportati sono disponibili nella stessa libreria usata dall'importazione. La tabella viene aggiornata al termine dell'operazione.
+
+## ⚙️ Modifiche tecniche
+
+- Il codice V2 continua a gestire il formato JSON, i montaggi e il controllo dei duplicati. L'esportazione usa connessioni SQL in sola lettura operativa, con query di selezione.
+
+## 📦 Download
+
+- `EDGECAM-Tool-v1.1.0-windows-x64.zip` contiene la GUI portatile con importazione ed esportazione.
+
 # Versione v1.0.1
 
 ## 📅 Data di pubblicazione

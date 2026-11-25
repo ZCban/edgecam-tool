@@ -9,8 +9,9 @@ from datetime import datetime, date, time
 from decimal import Decimal
 import pyodbc
 import sys
+from esportatori import edgecam_esporta_utensili_v2 as exporter
 
-VERSION = '1.0.1'
+VERSION = '1.1.0'
 APP_DIR = Path(sys.executable if getattr(sys, 'frozen', False) else __file__).resolve().parent
 
 # Disable ODBC pooling before opening any connection.
@@ -232,6 +233,17 @@ TRANSLATIONS.update({
     '{n} risultati': dict(zip(('it','en','es','fr','de','pt'), ('{n} risultati','{n} results','{n} resultados','{n} résultats','{n} Ergebnisse','{n} resultados'))),
 })
 
+for label, translations in {
+    'Esporta utensili': ('Export tools', 'Exportar herramientas', 'Exporter les outils', 'Werkzeuge exportieren', 'Exportar ferramentas'),
+    'Database sorgente': ('Source database', 'Base de datos de origen', 'Base de données source', 'Quelldatenbank', 'Banco de dados de origem'),
+    'Avvia esportazione': ('Start export', 'Iniciar exportación', 'Lancer l’exportation', 'Export starten', 'Iniciar exportação'),
+    'Seleziona un database sorgente e almeno una famiglia.': ('Select a source database and at least one family.', 'Selecciona una base de datos de origen y al menos una familia.', 'Sélectionnez une base de données source et au moins une famille.', 'Wähle eine Quelldatenbank und mindestens eine Familie aus.', 'Selecione um banco de dados de origem e pelo menos uma família.'),
+    'Cartella di esportazione': ('Export folder', 'Carpeta de exportación', 'Dossier d’exportation', 'Exportordner', 'Pasta de exportação'),
+    'Esportazione in corso...': ('Exporting tools...', 'Exportando herramientas...', 'Exportation des outils...', 'Werkzeuge werden exportiert...', 'Exportando ferramentas...'),
+}.items():
+    TRANSLATIONS[label] = dict(zip(('it', 'en', 'es', 'fr', 'de', 'pt'), (label, *translations)))
+
+
 def tool_labels(path):
     try:
         data=json.loads(path.read_text(encoding='utf-8-sig'))
@@ -261,7 +273,26 @@ class App:
         self.db_combo.grid(row=0,column=1,sticky='ew',padx=(0,8))
         self.localized(ttk.Button,dbbar,'Aggiorna database',command=self.scan).grid(row=0,column=2,padx=(0,8))
         self.localized(ttk.Button,dbbar,'Ripristina backup...',command=self.choose_restore).grid(row=0,column=3)
+        self.export_open = tk.BooleanVar(value=False)
+        self.localized(ttk.Checkbutton, f, 'Esporta utensili', variable=self.export_open,
+                       command=self.toggle_export).pack(anchor='w')
+        self.export_panel = ttk.Frame(f)
+        source_row = ttk.Frame(self.export_panel)
+        source_row.pack(fill='x', pady=(4, 0))
+        self.localized(ttk.Label, source_row, 'Database sorgente').pack(side='left', padx=(0, 8))
+        self.export_source = tk.StringVar()
+        self.export_sources = {}
+        self.export_combo = ttk.Combobox(source_row, textvariable=self.export_source, state='readonly', width=18)
+        self.export_combo.pack(side='left', fill='x', expand=True)
+        self.localized(ttk.Button, source_row, 'Aggiorna database', command=self.scan_export).pack(side='left', padx=(8, 0))
+        family_row = ttk.Frame(self.export_panel)
+        family_row.pack(fill='x', pady=4)
+        self.export_families = {family: tk.BooleanVar(value=True) for family in self.family_keys}
+        for family, selected in self.export_families.items():
+            self.localized(ttk.Checkbutton, family_row, family, variable=selected).pack(side='left', padx=(0, 8))
+        self.localized(ttk.Button, family_row, 'Avvia esportazione', command=self.run_export).pack(side='right')
         filters=ttk.Frame(f); filters.pack(fill='x',pady=(4,8))
+        self.filters = filters
         filters.columnconfigure(0,weight=1,uniform='filters')
         filters.columnconfigure(1,weight=1,uniform='filters')
         family_box=ttk.Frame(filters); family_box.grid(row=0,column=0,sticky='ew',padx=(0,8))
@@ -355,7 +386,7 @@ class App:
         for widget, keys in [(root, ('background',)), (self.log, ('background','foreground','insertbackground','selectbackground','selectforeground'))] + [(m, ('background','foreground','activebackground','activeforeground','selectcolor')) for m in (self.menubar,self.options_menu,self.language_menu,self.theme_menu)]:
             self.original_colors.append((widget, {k:widget.cget(k) for k in keys}))
         self.original_popdowns = []
-        for combo in (self.db_combo,self.family_combo,self.category_combo):
+        for combo in (self.db_combo,self.family_combo,self.category_combo,self.export_combo):
             try:
                 pop=combo.tk.call('ttk::combobox::PopdownWindow',str(combo))+'.f.l'
                 keys=('background','foreground','selectbackground','selectforeground')
@@ -540,8 +571,14 @@ class App:
         for w,_ in self.controls: w.configure(state='disabled')
         self.progress['value']=0; self.percent.set('0%'); self.log_history.clear(); self.last_status=''
         self.log.configure(state='normal'); self.log.delete('1.0','end'); self.log.configure(state='disabled')
-        if target in (self.scan_worker, self.test_worker):
-            self.last_status = 'Ricerca database in corso...' if target == self.scan_worker else 'Verifica connessione in corso...'
+        indeterminate = {
+            self.scan_worker: 'Ricerca database in corso...',
+            self.scan_export_worker: 'Ricerca database in corso...',
+            self.test_worker: 'Verifica connessione in corso...',
+            self.export_worker: 'Esportazione in corso...',
+        }
+        if target in indeterminate:
+            self.last_status = indeterminate[target]
             self.status.set(tr(self.last_status)); self.append(self.last_status)
             self.percent.set('')
             self.progress.configure(mode='indeterminate')
@@ -551,17 +588,28 @@ class App:
         threading.Thread(target=target,args=args,daemon=False).start()
     def poll(self):
         try:
-            while True:
+            for _ in range(100):
                 kind,value,text=self.events.get_nowait()
+                if kind == 'log':
+                    self.append(text)
+                    continue
                 self.last_status=text; self.status.set(translate_log(text)); self.append(text)
                 if kind != 'progress':
                     self.progress.stop()
                     self.progress.configure(mode='determinate')
-                if kind=='databases':
+                if kind in ('databases', 'export_databases'):
                     self.progress['value']=100; self.percent.set('100%')
-                    self.destinations={f'{n} | {s}':(n,s) for n,s in value}
-                    self.db_combo['values']=list(self.destinations)
-                    self.destination.set(next((k for k in self.destinations if k.startswith('TEST_PYTHON |')), ''))
+                    choices = {f'{n} | {s}': (n, s) for n, s in value}
+                    default = next((k for k in choices if k.startswith('TEST_PYTHON |')), '')
+                    if kind == 'databases':
+                        self.destinations = choices
+                        self.db_combo['values'] = list(choices)
+                        self.destination.set(default)
+                    else:
+                        current = self.export_source.get()
+                        self.export_sources = choices
+                        self.export_combo['values'] = list(choices)
+                        self.export_source.set(current if current in choices else default)
                     self.busy=False
                     for i in (0,1,2,3): self.options_menu.entryconfigure(i,state="normal")
                     for w,state in self.controls: w.configure(state=state)
@@ -571,7 +619,9 @@ class App:
                     self.busy=False
                     for i in (0,1,2,3): self.options_menu.entryconfigure(i,state="normal")
                     for w,state in self.controls: w.configure(state=state)
-                    if kind=='ok':
+                    if kind in ('export_ok', 'export_error'):
+                        self.refresh()
+                    if kind in ('ok', 'export_ok'):
                         self.progress['value']=100; self.percent.set('100%')
                         messagebox.showinfo(tr('Risultato'),translate_log(text))
                     else:
@@ -579,6 +629,48 @@ class App:
         except queue.Empty: pass
         self.root.after(80,self.poll)
     def report(self,n,text): self.events.put(('progress',n,text))
+    def toggle_export(self):
+        if self.export_open.get():
+            self.export_panel.pack(fill='x', before=self.filters)
+            if not self.export_sources:
+                self.scan_export()
+        else:
+            self.export_panel.pack_forget()
+
+    def scan_export(self):
+        self.start(self.scan_export_worker)
+
+    def scan_export_worker(self):
+        try:
+            self.events.put(('export_databases', exporter.discover(), 'Database sorgente'))
+        except Exception as error:
+            self.events.put(('error', 0, str(error)))
+
+    def run_export(self):
+        if self.busy:
+            return
+        source = self.export_sources.get(self.export_source.get())
+        families = [family for family, selected in self.export_families.items() if selected.get()]
+        if not source or not families:
+            messagebox.showwarning(tr('Esporta utensili'), tr('Seleziona un database sorgente e almeno una famiglia.'), parent=self.root)
+            return
+        database, server = source
+        family_names = ', '.join(tr(family) for family in families)
+        details = (f"{tr('Database sorgente')}: {database} | {server}\n"
+                   f"{tr('Famiglia utensili')}: {family_names}\n"
+                   f"{tr('Cartella di esportazione')}: {LIBRARY_ROOT}\n\n{tr('Confermi?')}")
+        if messagebox.askyesno(tr('Esporta utensili'), details, parent=self.root):
+            self.start(self.export_worker, database, server, families)
+
+    def export_worker(self, database, server, families):
+        try:
+            result = exporter.export(database, server, families, self.folders,
+                                     lambda line: self.events.put(('log', None, line)))
+        except Exception as error:
+            self.events.put(('export_error', 0, str(error)))
+        else:
+            self.events.put(('export_ok', 100, result))
+
     def scan(self):
         if self.busy: return
         self.destinations={}; self.destination.set(''); self.db_combo['values']=[]

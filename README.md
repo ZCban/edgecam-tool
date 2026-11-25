@@ -21,4 +21,6 @@ La compilazione genera la cartella portatile `dist/EDGECAM-Tool`. GitHub Actions
 
 ## Esportazione utensili
 
-L'esportatore del progetto è [`edgecam_esporta_utensili_v2.py`](esportatori/edgecam_esporta_utensili_v2.py). Per avviarlo dalla cartella del repository, usa `.\.venv\Scripts\python.exe .\esportatori\edgecam_esporta_utensili_v2.py`. Lo script esporta i file JSON in `esportatori/LIBRERIA_UTENSILI`.
+Nella finestra principale, apri **Esporta utensili**, scegli il **Database sorgente** e spunta le famiglie da esportare. Premi **Avvia esportazione** e conferma. Il programma legge gli utensili e i montaggi dal database e salva i JSON in `LIBRERIA_UTENSILI`, la stessa cartella usata dall'importazione. I duplicati per nome vengono saltati. Avanzamento, esito e nuovi utensili vengono mostrati nella finestra principale.
+
+Se hai già esportato utensili con la versione separata, i relativi JSON si trovano in `esportatori/LIBRERIA_UTENSILI`. Puoi copiarli nelle corrispondenti sottocartelle di `LIBRERIA_UTENSILI` evitando di sovrascrivere file esistenti.

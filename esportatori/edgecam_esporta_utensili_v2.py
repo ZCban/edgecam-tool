@@ -1,7 +1,6 @@
 import json
 import re
 from collections import Counter
-from pathlib import Path
 from datetime import date, datetime, time
 from decimal import Decimal
 import base64
@@ -62,15 +61,13 @@ def nome_file(value):
 TURNING = {0: 'TURN', 1: 'BORE', 2: 'INTERNAL GROOVE', 3: 'EXTERNAL GROOVE', 4: 'INTERNAL PARTING', 5: 'EXTERNAL PARTING', 6: 'INTERNAL THREAD', 7: 'EXTERNAL THREAD'}
 MILLING = {0: 'END MILL', 1: 'BULL NOSE', 2: 'BALL NOSE', 3: 'SLOT DRILL', 4: 'CHAMFER MILL', 5: 'FACE MILL', 6: 'T-SLOT', 7: 'LOLLIPOP', 8: 'THREAD MILL', 9: 'CORNER ROUNDER', 10: 'DOVETAIL', 11: 'BARREL', 12: 'DOUBLE ANGLE'}
 HOLE = {0: 'DRILL', 1: 'REAM', 2: 'TAP', 3: 'HOLE BORE', 4: 'COUNTERSINK', 5: 'CENTRE DRILL', 6: 'SPOT DRILL'}
-import tkinter as tk
-from tkinter import ttk, messagebox
-import threading, queue
 
-ROOT = Path(__file__).resolve().parent / 'LIBRERIA_UTENSILI'
 SERVERS = [r'(localdb)\ECSQLEXPRESS', r'(localdb)\.\ECSQLEXPRESSSHARED']
-FAMILIES = {'Tornitura': (1, 'TL_TOOL_TYPE_TURN_ID', TURNING, 'LIBRERIA_TORNITURA'),
-            'Fresatura': (0, 'TL_TOOL_TYPE_MILL_ID', MILLING, 'LIBRERIA_FRESATURA'),
-            'Foratura': (2, 'TL_TOOL_TYPE_HOLE_ID', HOLE, 'LIBRERIA_FORATURA')}
+FAMILIES = {
+    'TURNING': (1, 'TL_TOOL_TYPE_TURN_ID', TURNING),
+    'MILLING': (0, 'TL_TOOL_TYPE_MILL_ID', MILLING),
+    'HOLE': (2, 'TL_TOOL_TYPE_HOLE_ID', HOLE),
+}
 pyodbc.pooling = False
 
 def connect(database, server):
@@ -98,16 +95,16 @@ def discover():
     if not found: raise RuntimeError('Nessun ToolStore leggibile trovato.\n'+'\n'.join(errors))
     return found
 
-def export(database, server, selected, log):
+def export(database, server, selected, folders, log):
     # Verifica tutte le librerie selezionate prima di scrivere.
-    indexes={f:existing_names(ROOT/FAMILIES[f][3]) for f in selected}
+    indexes={f:existing_names(folders[f]) for f in selected}
     c=connect(database,server)
     total_new=total_skip=total_unknown=0
     try:
         cur=c.cursor()
         if cur.execute('SELECT DB_NAME()').fetchone()[0].casefold()!=database.casefold(): raise RuntimeError('Database sorgente non corrispondente')
         for family in selected:
-            cat,col,mapping,folder=FAMILIES[family]; output=ROOT/folder
+            cat,col,mapping=FAMILIES[family]; output=folders[family]
             tools=rows(cur,'SELECT * FROM dbo.TS_TOOL WHERE TL_TOOL_CATEGORY_ID=? ORDER BY TL_TOOL_ID',cat)
             mounts=rows(cur,'SELECT M.* FROM dbo.TS_MOUNTING M JOIN dbo.TS_TOOL T ON T.TL_TOOL_ID=M.MNT_TOOL_ID WHERE T.TL_TOOL_CATEGORY_ID=? ORDER BY M.MNT_TOOL_ID,M.MNT_MOUNTING_ID',cat)
             by_id={}
@@ -138,59 +135,3 @@ def export(database, server, selected, log):
             total_new+=new; total_skip+=skip; total_unknown+=unknown
     finally: c.close()
     return f'Nuovi esportati: {total_new} | Duplicati saltati: {total_skip} | Sottotipi esclusi: {total_unknown}'
-
-class App(tk.Tk):
-    def __init__(self):
-        super().__init__(); self.title('EDGECAM Tool Exporter V2'); self.geometry('850x600'); self.minsize(620,420)
-        self.events=queue.Queue(); self.busy=False; self.databases=[]
-        panel=ttk.Frame(self,padding=12); panel.pack(fill='both',expand=True)
-        ttk.Label(panel,text='Database sorgente').pack(anchor='w')
-        line=ttk.Frame(panel); line.pack(fill='x',pady=5)
-        self.combo=ttk.Combobox(line,state='readonly'); self.combo.pack(side='left',fill='x',expand=True)
-        self.refresh=ttk.Button(line,text='Aggiorna database',command=self.scan); self.refresh.pack(side='left',padx=(8,0))
-        ttk.Label(panel,text='Famiglie da esportare').pack(anchor='w',pady=(10,4))
-        line=ttk.Frame(panel); line.pack(fill='x'); self.vars={}; self.checks=[]
-        for f in FAMILIES:
-            v=tk.BooleanVar(value=True); self.vars[f]=v; b=ttk.Checkbutton(line,text=f,variable=v); b.pack(side='left',padx=(0,15)); self.checks.append(b)
-        ttk.Label(panel,text='Duplicati per nome: saltati automaticamente. Nessuna modifica SQL.').pack(anchor='w',pady=8)
-        self.go=ttk.Button(panel,text='Esporta utensili',command=self.run_export); self.go.pack(anchor='w',pady=5)
-        self.progress=ttk.Progressbar(panel,mode='indeterminate'); self.progress.pack(fill='x',pady=5)
-        frame=ttk.Frame(panel); frame.pack(fill='both',expand=True)
-        self.log=tk.Text(frame,wrap='word',state='disabled'); self.log.pack(side='left',fill='both',expand=True)
-        scroll=ttk.Scrollbar(frame,command=self.log.yview); scroll.pack(side='right',fill='y'); self.log.configure(yscrollcommand=scroll.set)
-        self.protocol('WM_DELETE_WINDOW',self.close); self.after(100,self.poll); self.scan()
-    def close(self):
-        if self.busy: messagebox.showinfo('EDGECAM','Attendi il termine dell’operazione.',parent=self)
-        else: self.destroy()
-    def start(self,fn):
-        self.busy=True; self.combo.configure(state='disabled'); self.refresh.configure(state='disabled'); self.go.configure(state='disabled')
-        for b in self.checks: b.configure(state='disabled')
-        self.progress.start(12)
-        def worker():
-            try: self.events.put(('done',fn()))
-            except Exception as e: self.events.put(('error',str(e)))
-        threading.Thread(target=worker,daemon=False).start()
-    def scan(self): self.start(discover)
-    def run_export(self):
-        i=self.combo.current(); selected=[f for f,v in self.vars.items() if v.get()]
-        if i<0 or not selected: messagebox.showwarning('EDGECAM','Seleziona database e almeno una famiglia.',parent=self); return
-        db,server=self.databases[i]
-        if messagebox.askyesno('Conferma esportazione',f'Database: {db}\nServer: {server}\nFamiglie: {", ".join(selected)}\n\nEsportare nella libreria interna?',parent=self):
-            self.start(lambda:export(db,server,selected,lambda s:self.events.put(('log',s))))
-    def append(self,s):
-        self.log.configure(state='normal'); self.log.insert('end',s+'\n'); self.log.see('end'); self.log.configure(state='disabled')
-    def poll(self):
-        try:
-            for _ in range(100):
-                kind,value=self.events.get_nowait()
-                if kind=='log': self.append(value); continue
-                self.busy=False; self.progress.stop(); self.combo.configure(state='readonly'); self.refresh.configure(state='normal'); self.go.configure(state='normal')
-                for b in self.checks: b.configure(state='normal')
-                if kind=='error': self.append('ERRORE: '+value); messagebox.showerror('EDGECAM',value,parent=self)
-                elif isinstance(value,list):
-                    self.databases=value; self.combo['values']=[f'{d} — {s}' for d,s in value]; self.combo.current(next((i for i,(d,s) in enumerate(value) if d=='TEST_PYTHON'),0)); self.append(f'Database disponibili: {len(value)}')
-                else: self.append(value); messagebox.showinfo('Esportazione completata',value,parent=self)
-        except queue.Empty: pass
-        self.after(100,self.poll)
-
-if __name__=='__main__': App().mainloop()
