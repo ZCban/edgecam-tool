@@ -1,6 +1,6 @@
 # EDGECAM Tool
 
-Utilità Windows per importare gli utensili di tornitura, fresatura e foratura da librerie JSON nel database EDGECAM. La GUI V41 è distribuita a partire dalla release `v1.0.0`. Le versioni precedenti della GUI sono conservate nel repository.
+Utilità Windows per importare ed esportare gli utensili di tornitura, fresatura e foratura tra librerie JSON e database EDGECAM. `edgecam_gui_v41.py` è l'unica GUI del progetto.
 
 ## Avvio
 

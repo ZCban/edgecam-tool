@@ -1,3 +1,17 @@
+# Versione v1.1.1
+
+## 📅 Data di pubblicazione
+
+25 novembre 2026
+
+## ⚙️ Modifiche tecniche
+
+- Rimossi i tre script di analisi di esempio e le versioni della GUI dalla V30 alla V40. La V41 resta l'unica GUI nel progetto e comprende importazione ed esportazione.
+
+## 📦 Download
+
+- `EDGECAM-Tool-v1.1.1-windows-x64.zip` contiene la GUI V41 portatile.
+
 # Versione v1.1.0
 
 ## 📅 Data di pubblicazione
