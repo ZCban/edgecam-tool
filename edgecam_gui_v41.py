@@ -9,9 +9,10 @@ from datetime import datetime, date, time
 from decimal import Decimal
 import pyodbc
 import sys
+import os
 from esportatori import edgecam_esporta_utensili_v2 as exporter
 
-VERSION = '1.1.1'
+VERSION = '1.1.2'
 APP_DIR = Path(sys.executable if getattr(sys, 'frozen', False) else __file__).resolve().parent
 
 # Disable ODBC pooling before opening any connection.
@@ -245,11 +246,66 @@ for label, translations in {
 
 
 def tool_labels(path):
+    data = json.loads(path.read_text(encoding='utf-8-sig'))
+    return str(data.get('codice') or ''), str(data.get('nome') or path.stem)
+
+
+def library_json_entries(folder):
     try:
-        data=json.loads(path.read_text(encoding='utf-8-sig'))
-        return str(data.get('codice') or ''), str(data.get('nome') or path.stem)
-    except (OSError, ValueError, AttributeError):
-        return '', path.stem
+        with os.scandir(folder) as categories:
+            for category in categories:
+                try:
+                    if not category.is_dir():
+                        continue
+                    with os.scandir(category.path) as files:
+                        for entry in files:
+                            if entry.name.lower().endswith('.json') and entry.is_file():
+                                yield f'{category.name}/{entry.name}', entry
+                except OSError:
+                    continue
+    except OSError:
+        return
+
+
+def index_library(folder):
+    cache_path = folder / '.edgecam-index.cache'
+    try:
+        cache = json.loads(cache_path.read_text(encoding='utf-8'))
+    except (OSError, ValueError):
+        cache = {}
+    if not isinstance(cache, dict):
+        cache = {}
+
+    entries = {}
+    index = {}
+    for key, entry in library_json_entries(folder):
+        path = Path(entry.path)
+        try:
+            stat = entry.stat()
+            signature = [stat.st_mtime_ns, stat.st_ctime_ns, stat.st_size]
+            cached = cache.get(key)
+            if (isinstance(cached, list) and len(cached) == 5 and cached[:3] == signature
+                    and all(isinstance(value, str) for value in cached[3:])):
+                labels = tuple(cached[3:])
+            else:
+                labels = tool_labels(path)
+        except (OSError, ValueError, AttributeError):
+            index[path] = ('', path.stem)
+            continue
+        index[path] = labels
+        entries[key] = [*signature, *labels]
+
+    if entries != cache:
+        temp_path = cache_path.with_name(f'.edgecam-index-{uuid.uuid4().hex}.tmp')
+        try:
+            temp_path.write_text(json.dumps(entries, separators=(',', ':')), encoding='utf-8')
+            temp_path.replace(cache_path)
+        except OSError:
+            try:
+                temp_path.unlink(missing_ok=True)
+            except OSError:
+                pass
+    return index
 
 class App:
     def __init__(self, root):
@@ -260,7 +316,7 @@ class App:
             for category in GRAPHICS_CATEGORIES[family]:
                 (folder / category).mkdir(parents=True, exist_ok=True)
         create_graphics_folders()
-        self.destinations={}; self.busy=False; self.events=queue.Queue(); self.controls=[]
+        self.destinations={}; self.busy=False; self.scanning=False; self.events=queue.Queue(); self.controls=[]
         root.protocol("WM_DELETE_WINDOW", self.close)
         root.title(f"EDGECAM - {tr('Importa utensili')} V41 · v{VERSION}"); root.geometry('950x900')
         f=ttk.Frame(root,padding=20); f.pack(fill='both',expand=True)
@@ -271,11 +327,14 @@ class App:
         self.destination=tk.StringVar()
         self.db_combo=ttk.Combobox(dbbar,textvariable=self.destination,state='readonly',width=18)
         self.db_combo.grid(row=0,column=1,sticky='ew',padx=(0,8))
-        self.localized(ttk.Button,dbbar,'Aggiorna database',command=self.scan).grid(row=0,column=2,padx=(0,8))
-        self.localized(ttk.Button,dbbar,'Ripristina backup...',command=self.choose_restore).grid(row=0,column=3)
+        refresh_databases = self.localized(ttk.Button,dbbar,'Aggiorna database',command=self.scan)
+        refresh_databases.grid(row=0,column=2,padx=(0,8))
+        restore = self.localized(ttk.Button,dbbar,'Ripristina backup...',command=self.choose_restore)
+        restore.grid(row=0,column=3)
         self.export_open = tk.BooleanVar(value=False)
-        self.localized(ttk.Checkbutton, f, 'Esporta utensili', variable=self.export_open,
-                       command=self.toggle_export).pack(anchor='w')
+        export_toggle = self.localized(ttk.Checkbutton, f, 'Esporta utensili', variable=self.export_open,
+                                       command=self.toggle_export)
+        export_toggle.pack(anchor='w')
         self.export_panel = ttk.Frame(f)
         source_row = ttk.Frame(self.export_panel)
         source_row.pack(fill='x', pady=(4, 0))
@@ -284,13 +343,15 @@ class App:
         self.export_sources = {}
         self.export_combo = ttk.Combobox(source_row, textvariable=self.export_source, state='readonly', width=18)
         self.export_combo.pack(side='left', fill='x', expand=True)
-        self.localized(ttk.Button, source_row, 'Aggiorna database', command=self.scan_export).pack(side='left', padx=(8, 0))
+        refresh_sources = self.localized(ttk.Button, source_row, 'Aggiorna database', command=self.scan_export)
+        refresh_sources.pack(side='left', padx=(8, 0))
         family_row = ttk.Frame(self.export_panel)
         family_row.pack(fill='x', pady=4)
         self.export_families = {family: tk.BooleanVar(value=True) for family in self.family_keys}
         for family, selected in self.export_families.items():
             self.localized(ttk.Checkbutton, family_row, family, variable=selected).pack(side='left', padx=(0, 8))
-        self.localized(ttk.Button, family_row, 'Avvia esportazione', command=self.run_export).pack(side='right')
+        export_button = self.localized(ttk.Button, family_row, 'Avvia esportazione', command=self.run_export)
+        export_button.pack(side='right')
         filters=ttk.Frame(f); filters.pack(fill='x',pady=(4,8))
         self.filters = filters
         filters.columnconfigure(0,weight=1,uniform='filters')
@@ -368,8 +429,10 @@ class App:
         root.configure(menu=menubar)
         self.status=tk.StringVar(); ttk.Label(f,textvariable=self.status,wraplength=780).pack(anchor='w',pady=10)
         buttons=ttk.Frame(f); buttons.pack(fill='x',side='bottom')
-        self.localized(ttk.Button,buttons,'Verifica connessione',command=self.test).pack(side='left')
-        self.localized(ttk.Button,buttons,'Inserisci selezionati',command=self.save).pack(side='right')
+        test_connection = self.localized(ttk.Button,buttons,'Verifica connessione',command=self.test)
+        test_connection.pack(side='left')
+        insert = self.localized(ttk.Button,buttons,'Inserisci selezionati',command=self.save)
+        insert.pack(side='right')
         self.progress=ttk.Progressbar(f,maximum=100,mode='determinate')
         self.progress.pack(fill='x',pady=5)
         self.percent=tk.StringVar(value='0%'); ttk.Label(f,textvariable=self.percent).pack(anchor='e')
@@ -380,6 +443,9 @@ class App:
                     self.controls.append((child,str(child.cget('state'))))
                 collect(child)
         collect(f)
+        database_widgets = (self.db_combo, refresh_databases, restore, export_toggle,
+                            self.export_combo, refresh_sources, export_button, test_connection, insert)
+        self.scan_controls = [(widget, state) for widget, state in self.controls if widget in database_widgets]
         self.original_theme = style.theme_use()
         style.theme_create('edgecam_black', parent='clam')
         self.original_colors = []
@@ -482,16 +548,15 @@ class App:
     def change_family(self,event=None):
         self.family_key=self.family_keys[self.family_combo.current()]
         self.folder=self.folders[self.family_key]; self.category_key='ALL'; self.refresh()
-    def library_files(self):
-        return sorted(p for p in self.folder.glob('*/*.json') if p.is_file())
     def refresh_categories(self):
-        folders=sorted({p.parent.name for p in self.library_files()})
+        folders=sorted({p.parent.name for p in self.tool_index})
         self.category_keys=['ALL']+folders
         if self.category_key not in self.category_keys: self.category_key='ALL'
         self.category_combo.configure(values=[tr(k) for k in self.category_keys]); self.category_combo.current(self.category_keys.index(self.category_key))
     def refresh(self):
-        files=set(self.library_files()); self.tool_index={p:tool_labels(p) for p in files}; self.chosen.intersection_update(files)
-        self.graphics={p:g for p,g in self.graphics.items() if p in files}
+        self.tool_index = index_library(self.folder)
+        self.chosen.intersection_update(self.tool_index)
+        self.graphics={p:g for p,g in self.graphics.items() if p in self.tool_index}
         self.refresh_categories(); self.refresh_files()
     def refresh_files(self,event=None):
         if event is not None: self.category_key=self.category_keys[self.category_combo.current()]
@@ -514,13 +579,13 @@ class App:
     def update_count(self):
         self.count.set(tr('{n} selezionati').format(n=len(self.chosen))); self.info.set(tr('{n} grafiche assegnate nella libreria').format(n=len(self.graphics)))
     def toggle(self,iid):
-        if self.busy or not iid: return
+        if (self.busy and not self.scanning) or not iid: return
         p=self.visible[int(iid)]
         if p in self.chosen: self.chosen.remove(p)
         else: self.chosen.add(p)
         self.lb.item(iid,image=self.check_images[p in self.chosen]); self.update_count()
     def toggle_click(self,event):
-        if self.busy: return 'break'
+        if self.busy and not self.scanning: return 'break'
         if self.lb.identify_region(event.x,event.y) in ('tree','cell') and self.lb.identify_column(event.x)=='#0':
             iid=self.lb.identify_row(event.y)
             self.toggle(iid)
@@ -567,8 +632,9 @@ class App:
     def start(self,target,*args):
         if self.busy: return
         self.busy=True
+        self.scanning = target in (self.scan_worker, self.scan_export_worker)
         for i in (0,1,2,3): self.options_menu.entryconfigure(i,state="disabled")
-        for w,_ in self.controls: w.configure(state='disabled')
+        for w,_ in (self.scan_controls if self.scanning else self.controls): w.configure(state='disabled')
         self.progress['value']=0; self.percent.set('0%'); self.log_history.clear(); self.last_status=''
         self.log.configure(state='normal'); self.log.delete('1.0','end'); self.log.configure(state='disabled')
         indeterminate = {
@@ -586,6 +652,11 @@ class App:
         else:
             self.progress.configure(mode='determinate')
         threading.Thread(target=target,args=args,daemon=False).start()
+    def finish_operation(self):
+        for widget, state in (self.scan_controls if self.scanning else self.controls):
+            widget.configure(state=state)
+        for i in (0,1,2,3): self.options_menu.entryconfigure(i,state="normal")
+        self.busy = self.scanning = False
     def poll(self):
         try:
             for _ in range(100):
@@ -610,15 +681,11 @@ class App:
                         self.export_sources = choices
                         self.export_combo['values'] = list(choices)
                         self.export_source.set(current if current in choices else default)
-                    self.busy=False
-                    for i in (0,1,2,3): self.options_menu.entryconfigure(i,state="normal")
-                    for w,state in self.controls: w.configure(state=state)
+                    self.finish_operation()
                 elif kind=='progress':
                     self.progress['value']=value; self.percent.set(f'{value}%')
                 else:
-                    self.busy=False
-                    for i in (0,1,2,3): self.options_menu.entryconfigure(i,state="normal")
-                    for w,state in self.controls: w.configure(state=state)
+                    self.finish_operation()
                     if kind in ('export_ok', 'export_error'):
                         self.refresh()
                     if kind in ('ok', 'export_ok'):

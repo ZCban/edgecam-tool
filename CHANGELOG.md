@@ -1,3 +1,18 @@
+# Versione v1.1.2
+
+## 📅 Data di pubblicazione
+
+27 novembre 2026
+
+## 🚀 Miglioramenti
+
+- L'indice locale conserva i dati usati dalla tabella e rilegge solo i JSON nuovi o modificati. L'indice si aggiorna anche quando un utensile viene eliminato.
+- La ricerca, i filtri e la selezione degli utensili restano disponibili durante il rilevamento dei database.
+
+## 📦 Download
+
+- `EDGECAM-Tool-v1.1.2-windows-x64.zip` contiene la GUI V41 portatile.
+
 # Versione v1.1.1
 
 ## 📅 Data di pubblicazione

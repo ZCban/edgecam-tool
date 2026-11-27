@@ -6,6 +6,8 @@ A Windows utility for importing and exporting turning, milling, and holemaking t
 
 Extract the entire portable archive to a writable folder and run `EDGECAM-Tool.exe`. Copy `LIBRERIA_UTENSILI` and `GRAFICHE` from your existing installation into the same folder as the executable. You can also copy `EDGECAM_OPTIONS.json` and `BACKUP_DATABASE` to reuse your settings and backups. The archive includes the application and its Python dependencies. Database access requires SQL Server Native Client 11.0 and permission to connect to the EDGECAM instance using Windows Authentication.
 
+The first load builds a local `.edgecam-index.cache` for each library family as you open it. Later loads read tool labels from the cache and reopen only new or changed JSON files. You can delete the cache to rebuild it. The library remains searchable and selectable while the application discovers databases.
+
 ## Development
 
 Run the following commands in PowerShell with Python 3.14 on Windows.
